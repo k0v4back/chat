@@ -8,25 +8,33 @@ import (
 	"strings"
 )
 
-type user chan string
+type Message struct {
+	UserId	string
+	text	string
+}
+
+type UserEvent struct {
+	UserId 		string
+	msgChan   	chan *Message
+}
 
 var (
-	connecting 	= 	make(chan user)
-	leaving 	= 	make(chan user)
-	message 	= 	make(chan string)
+	connecting 	= 	make(chan *UserEvent)
+	leaving 	= 	make(chan string)
+	message 	= 	make(chan *Message)
 )
 
 func broadcaster(){
-	users := make(map[user]bool)
+	users := make(map[string]chan *Message)
 	for {
 		select {
-		case con := <- connecting:
-			users[con] = true
+		case cli := <- connecting:
+			users[cli.UserId] = cli.msgChan
 		case cli := <- leaving:
 			delete(users, cli)
-			close(cli)
+			close(users[cli])
 		case msg := <- message:
-			for cli := range users {
+			for _, cli := range users {
 				cli <- msg
 			}
 		}
@@ -41,7 +49,7 @@ func EchoServer(ws *websocket.Conn) {
 
 	go func() {
 		for msg := range message {
-			ws.Write([]byte(msg))
+			ws.Write([]byte(msg.text))
 		}
 	}()
 
@@ -59,10 +67,7 @@ func EchoServer(ws *websocket.Conn) {
 			log.Println("My be your message > " + string(length))
 			return
 		}
-		//ws.Write([]byte(buf))
-
-		message <- string(buf)
-		//fmt.Println(string(buf))
+		message <- &Message{ws.RemoteAddr().String(), string(buf)}
 	}
 }
 
